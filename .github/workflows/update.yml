@@ -1,0 +1,40 @@
+name: update
+
+on:
+  schedule:
+    # Brave's signed checksums mostly land between 16:00 and 22:00 UTC.
+    - cron: "30 22 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+
+      - id: update
+        run: nix run .#update
+
+      - if: steps.update.outputs.version != '' || github.event_name == 'push'
+        run: nix build --print-build-logs --no-link .#brave
+
+      - if: steps.update.outputs.version != ''
+        env:
+          PREVIOUS: ${{ steps.update.outputs.previous }}
+          VERSION: ${{ steps.update.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sources
+          git commit -m "brave: $PREVIOUS -> $VERSION"
+          git push
